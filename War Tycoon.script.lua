@@ -3,104 +3,91 @@ local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UIS = game:GetService("UserInputService")
 
+local SKIP_URL = "https://raw.githubusercontent.com/Fares18638364/Skip.script.lua/refs/heads/main/Skip.Script.lua"
+
 -- إنشاء القائمة
 local ScreenGui = Instance.new("ScreenGui", game.CoreGui)
 local Frame = Instance.new("Frame", ScreenGui)
-Frame.Size = UDim2.new(0, 200, 0, 260)
-Frame.Position = UDim2.new(0.5, 0, 0.5, 0)
+Frame.Size = UDim2.new(0, 200, 0, 220); Frame.Position = UDim2.new(0.5, 0, 0.5, 0)
 Frame.BackgroundColor3 = Color3.new(0.1, 0.1, 0.1)
 
--- عنوان الحقوق
 local Title = Instance.new("TextLabel", Frame)
-Title.Size = UDim2.new(1, 0, 0.1, 0)
-Title.Text = "المطور فارس"
-Title.TextColor3 = Color3.new(1, 1, 1)
-Title.BackgroundColor3 = Color3.new(0.3, 0, 0)
+Title.Size = UDim2.new(1, 0, 0.15, 0); Title.Text = "المطور فارس"
+Title.TextColor3 = Color3.new(1, 1, 1); Title.BackgroundColor3 = Color3.new(0.3, 0, 0)
 
--- المتغيرات الأساسية (خارج الدوال لضمان الحفظ)
-local SavedPosition = nil
-local VisitedBarrels = {}
-local ForbiddenZones = {}
+-- الأزرار
+local AutoBtn = Instance.new("TextButton", Frame)
+AutoBtn.Size = UDim2.new(0.9, 0, 0.2, 0); AutoBtn.Position = UDim2.new(0.05, 0, 0.2, 0); AutoBtn.Text = "تشغيل أوتو فارم"
 
--- وظيفة إنشاء الأزرار
-local function CreateButton(text, pos)
-    local btn = Instance.new("TextButton", Frame)
-    btn.Size = UDim2.new(0.9, 0, 0.15, 0); btn.Position = pos
-    btn.Text = text; return btn
-end
+local ResetBtn = Instance.new("TextButton", Frame)
+ResetBtn.Size = UDim2.new(0.9, 0, 0.2, 0); ResetBtn.Position = UDim2.new(0.05, 0, 0.45, 0); ResetBtn.Text = "إعادة ضبط المواقع"
 
-local FlyBtn = CreateButton("الطيران للبرميل الجديد", UDim2.new(0.05, 0, 0.15, 0))
-local BackBtn = CreateButton("العودة للمكان الأصلي", UDim2.new(0.05, 0, 0.35, 0))
-local ResetBtn = CreateButton("إعادة ضبط المواقع", UDim2.new(0.05, 0, 0.55, 0))
-local BlockBtn = CreateButton("حظر المكان الحالي", UDim2.new(0.05, 0, 0.75, 0))
-BlockBtn.BackgroundColor3 = Color3.new(0.6, 0, 0)
+local BlockBtn = Instance.new("TextButton", Frame)
+BlockBtn.Size = UDim2.new(0.9, 0, 0.2, 0); BlockBtn.Position = UDim2.new(0.05, 0, 0.7, 0); BlockBtn.Text = "حظر المكان"; BlockBtn.BackgroundColor3 = Color3.new(0.6, 0, 0)
 
--- نظام السحب للموبايل
-local dragging, dragInput, mousePos, framePos
-Frame.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
-        dragging = true; mousePos = input.Position; framePos = Frame.Position
-    end
-end)
-UIS.InputChanged:Connect(function(input)
-    if dragging and (input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseMovement) then
-        local delta = input.Position - mousePos
-        Frame.Position = UDim2.new(framePos.X.Scale, framePos.X.Offset + delta.X, framePos.Y.Scale, framePos.Y.Offset + delta.Y)
-    end
-end)
-UIS.InputEnded:Connect(function(input) if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end end)
+local IsAutoRunning = false
+local VisitedBarrels, ForbiddenZones = {}, {}
 
--- دالة البحث الذكية
+-- نظام السحب
+local dragging, mousePos, framePos
+Frame.InputBegan:Connect(function(input) if input.UserInputType == Enum.UserInputType.Touch then dragging = true; mousePos = input.Position; framePos = Frame.Position end end)
+UIS.InputChanged:Connect(function(input) if dragging then local delta = input.Position - mousePos; Frame.Position = UDim2.new(framePos.X.Scale, framePos.X.Offset + delta.X, framePos.Y.Scale, framePos.Y.Offset + delta.Y) end end)
+UIS.InputEnded:Connect(function() dragging = false end)
+
 local function FindNewBarrel()
-    local bestTarget = nil
     for _, obj in pairs(workspace:GetDescendants()) do
         if obj.Name == "MainPart" and obj:IsA("BasePart") and obj:FindFirstChild("Drop") and obj:FindFirstChild("Pickup") then
             local AlreadyVisited = false
             for _, pos in pairs(VisitedBarrels) do if (obj.Position - pos).Magnitude < 10 then AlreadyVisited = true; break end end
-            
             local IsForbidden = false
             for _, badPos in pairs(ForbiddenZones) do if (obj.Position - badPos).Magnitude < 20 then IsForbidden = true; break end end
-            
-            if not AlreadyVisited and not IsForbidden then 
-                bestTarget = obj
-                break 
-            end
+            if not AlreadyVisited and not IsForbidden then return obj end
         end
     end
-    return bestTarget
+    return nil
 end
 
--- الأزرار والوظائف
-FlyBtn.MouseButton1Click:Connect(function()
-    local Target = FindNewBarrel()
-    if Target then
-        table.insert(VisitedBarrels, Target.Position) -- حفظ المكان في الجدول العام
-        SavedPosition = Players.LocalPlayer.Character.HumanoidRootPart.CFrame
-        local RootPart = Players.LocalPlayer.Character.HumanoidRootPart
+AutoBtn.MouseButton1Click:Connect(function()
+    IsAutoRunning = not IsAutoRunning
+    AutoBtn.Text = IsAutoRunning and "إيقاف أوتو فارم" or "تشغيل أوتو فارم"
+    
+    if IsAutoRunning then
+        local SavedPosition = Players.LocalPlayer.Character.HumanoidRootPart.CFrame
         
-        TweenService:Create(RootPart, TweenInfo.new(1), {CFrame = Target.CFrame + Vector3.new(0, 1, 0)}):Play()
-        task.wait(1.1)
-        TweenService:Create(RootPart, TweenInfo.new(0.5), {CFrame = Target.CFrame + Vector3.new(0, 11, 0)}):Play()
-        task.wait(0.6)
-        
-        local Prompt = Target:FindFirstChildOfClass("ProximityPrompt")
-        if Prompt then fireproximityprompt(Prompt) end
-    else
-        FlyBtn.Text = "لا توجد براميل جديدة!"
-        task.wait(2); FlyBtn.Text = "الطيران للبرميل الجديد"
+        while IsAutoRunning do
+            local Target = FindNewBarrel()
+            if Target then
+                table.insert(VisitedBarrels, Target.Position)
+                local RootPart = Players.LocalPlayer.Character.HumanoidRootPart
+                local Humanoid = Players.LocalPlayer.Character:FindFirstChild("Humanoid")
+                
+                -- طيران انسيابي للبرميل
+                TweenService:Create(RootPart, TweenInfo.new(1), {CFrame = Target.CFrame + Vector3.new(0, 1, 0)}):Play()
+                task.wait(1.1)
+                
+                loadstring(game:HttpGet(SKIP_URL))()
+                -- زيادة الدم بمقدار 5 (مع التحقق من عدم تجاوز الماكس)
+                if Humanoid then Humanoid.Health = math.min(Humanoid.Health + 5, Humanoid.MaxHealth) end
+                
+                -- انتظار ثانية واحدة
+                task.wait(1)
+                
+                -- طيران انسيابي للعودة
+                TweenService:Create(RootPart, TweenInfo.new(1), {CFrame = SavedPosition}):Play()
+                task.wait(1.1)
+                
+                loadstring(game:HttpGet(SKIP_URL))()
+            else
+                task.wait(1)
+            end
+            task.wait(0.1)
+        end
     end
 end)
 
-BackBtn.MouseButton1Click:Connect(function() if SavedPosition then Players.LocalPlayer.Character.HumanoidRootPart.CFrame = SavedPosition end end)
-ResetBtn.MouseButton1Click:Connect(function() VisitedBarrels = {}; FlyBtn.Text = "تم إعادة الضبط" task.wait(1); FlyBtn.Text = "الطيران للبرميل الجديد" end)
-BlockBtn.MouseButton1Click:Connect(function()
-    if #ForbiddenZones < 6 then 
-        table.insert(ForbiddenZones, Players.LocalPlayer.Character.HumanoidRootPart.Position) 
-        BlockBtn.Text = "تم الحظر (" .. #ForbiddenZones .. "/6)"
-    else BlockBtn.Text = "وصلت للحد الأقصى!" end
-end)
+ResetBtn.MouseButton1Click:Connect(function() VisitedBarrels = {}; AutoBtn.Text = "تم إعادة الضبط" task.wait(1); AutoBtn.Text = "تشغيل أوتو فارم" end)
+BlockBtn.MouseButton1Click:Connect(function() table.insert(ForbiddenZones, Players.LocalPlayer.Character.HumanoidRootPart.Position); BlockBtn.Text = "تم الحظر" end)
 
--- Noclip دائم
 RunService.Stepped:Connect(function()
     local char = Players.LocalPlayer.Character
     if char and char:FindFirstChild("HumanoidRootPart") then char.HumanoidRootPart.CanCollide = false end
